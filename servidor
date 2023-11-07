@@ -3,6 +3,7 @@ import asyncio
 from tcp import Servidor
 import re
 _nick_dict = {}
+_canal_dict = {}
 
 
 def verifica(conexao, dados):
@@ -12,7 +13,7 @@ def verifica(conexao, dados):
         return sair(conexao)
     
     
-#MENSAGENS TIPO PING    
+#TRATAMENTO MENSAGENS TIPO PING    
 #######################################################################################################################################
     if dados[0:4].upper() == b'PING':
         return(conexao, b':server PONG server :' + dados.split(b' ',1)[1]+b'\r\n')
@@ -55,6 +56,21 @@ def verifica(conexao, dados):
         quem_envia = _nick_dict[conexao]
         dados = dados.split(maxsplit=2)
         quem_recebe = dados[1]
+        #Verifica se eh um canal
+        ###############################################################################################################################
+        if quem_recebe.startswith(b'#'):
+            conteudo_msg = dados[2].replace(b':', b'')
+            canal = quem_recebe.lower()
+            canal = canal.replace(b'#', b'')
+            resposta = b':' + quem_envia + b' PRIVMSG #' + canal + b' :' + conteudo_msg + b'\r\n'
+            
+            for conex in _canal_dict[canal]:
+                if (conex != conexao):
+                    conex.enviar(resposta)
+
+            return(conexao, b'')
+        
+        ###############################################################################################################################
 
         if not (quem_recebe.lower() in _nick_dict.values()):
             return conexao, b''
@@ -65,7 +81,50 @@ def verifica(conexao, dados):
         
 #######################################################################################################################################
     
-    
+
+#TRATAMENTO MENSAGENS TIPO JOIN
+#######################################################################################################################################
+    if dados[0:4].upper() == b'JOIN':
+        canal = dados.split(b' ',1)[1].replace(b'#', b'').lower()
+        
+        if not validar_nome(canal):
+            return(conexao, b':server 403 ' + dados + b' :No such channel\r\n')
+        
+        if _canal_dict.get(canal) is None:
+            _canal_dict[canal] = {}
+            _canal_dict[canal][conexao] = _nick_dict[conexao]
+            
+        if _canal_dict.get(canal) is not None:
+            _canal_dict[canal][conexao] = _nick_dict[conexao]
+            for conex in _canal_dict[canal]:
+                if (conex != conexao):
+                    print(conex, b':' + _nick_dict[conexao] + b' JOIN :#' + canal + b'\r\n')
+                    conex.enviar(b':' + _nick_dict[conexao] + b' JOIN :#' + canal + b'\r\n')
+                    
+        mensagem_entrou = b':' + _nick_dict[conexao] + b' JOIN :#' + canal + b'\r\n'
+        
+        
+        template = b':server 353 ' + _nick_dict[conexao] + b' = #' + canal + b' :'
+        participantes =b''
+        lista_participantes = []
+        
+        for conexao in _canal_dict[canal]:
+            lista_participantes.append(_nick_dict[conexao])
+            
+        for mem in sorted(lista_participantes):
+            participantes += mem + b' '
+            
+        mensagem_membros = template + participantes + b'\r\n'
+        mensagem_fim_membros = b':server 366 ' +  _nick_dict[conexao] + b' #' + canal + b' :End of /NAMES list.\r\n'
+                    
+        mensagem = mensagem_entrou + mensagem_membros + mensagem_fim_membros
+        
+        return(conexao, mensagem)
+        
+        
+        
+#######################################################################################################################################
+
     
     
 def validar_nome(nome):
@@ -114,6 +173,7 @@ def conexao_aceita(conexao):
 
 
 servidor = Servidor(6667)
+_nick_dict = {}
 _dados_residuais = b''
 servidor.registrar_monitor_de_conexoes_aceitas(conexao_aceita)
 asyncio.get_event_loop().run_forever()
