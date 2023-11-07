@@ -50,8 +50,20 @@ def verifica(conexao, dados):
 
 #TRATAMENTO MENSAGENS TIPO PRIVMSG
 #######################################################################################################################################
- 
-    
+    if dados[0:7].upper() == b'PRIVMSG':
+        
+        quem_envia = _nick_dict[conexao]
+        dados = dados.split(maxsplit=2)
+        quem_recebe = dados[1]
+
+        if not (quem_recebe.lower() in _nick_dict.values()):
+            return conexao, b''
+        
+        targetPos = list(_nick_dict.values()).index(quem_recebe.lower())
+        resposta = b':' + quem_envia + b' PRIVMSG ' + quem_recebe + b' ' + dados[2] + b'\r\n'
+        return (list(_nick_dict.keys())[targetPos],resposta)
+        
+#######################################################################################################################################
     
     
     
